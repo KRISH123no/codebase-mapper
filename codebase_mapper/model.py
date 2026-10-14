@@ -23,6 +23,12 @@ class Module:
     #: out of it, and only the full set of modules says which of those two is
     #: the real target.
     raw: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)
+    #: The same, for imports that do not happen at import time — inside a
+    #: function, or under `if TYPE_CHECKING`. They are real relationships but
+    #: not runtime dependencies, and a cycle made of them is someone having
+    #: already solved the problem.
+    raw_deferred: list[tuple[str, tuple[str, ...]]] = field(default_factory=list)
+    deferred: set[str] = field(default_factory=set)
     classes: int = 0
     #: Classes that are abstract — ABC, Protocol, or holding @abstractmethod.
     abstract_classes: int = 0

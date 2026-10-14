@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -82,7 +83,11 @@ def parse(root: str | Path) -> Project:
             path = Path(folder) / name
             try:
                 text = path.read_text(encoding="utf-8")
-                tree = ast.parse(text)
+                with warnings.catch_warnings():
+                    # A file with a stray backslash in a docstring warns on
+                    # parse. That is the project's business, not ours.
+                    warnings.simplefilter("ignore")
+                    tree = ast.parse(text)
             except (OSError, SyntaxError, ValueError):
                 unreadable.append(str(path))
                 continue
@@ -106,20 +111,49 @@ def parse(root: str | Path) -> Project:
 
 
 def _walk(tree: ast.Module, module: Module, package: str) -> None:
-    raw: list[tuple[str, tuple[str, ...]]] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            raw.extend((alias.name, ()) for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            base = _from_target(node, package)
-            raw.append((base, tuple(a.name for a in node.names)))
-        elif isinstance(node, ast.ClassDef):
-            module.classes += 1
-            if _is_abstract(node):
-                module.abstract_classes += 1
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-            module.functions += 1
-    module.raw = [(base, names) for base, names in raw if base]
+    """Descend the tree, remembering whether we are still at import time.
+
+    `ast.walk` flattens everything, which treats
+
+        if TYPE_CHECKING:
+            from .app import Flask
+
+    exactly like a module-level import. It is not one: nothing is imported at
+    run time, and the author wrote it that way *because* there is a cycle.
+    Counting it as a dependency turns every mature project into one enormous
+    circular cluster — Flask came out as 20 of its 35 modules.
+    """
+    hard: list[tuple[str, tuple[str, ...]]] = []
+    soft: list[tuple[str, tuple[str, ...]]] = []
+
+    def visit(node: ast.AST, deferred: bool) -> None:
+        bucket = soft if deferred else hard
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.Import):
+                bucket.extend((alias.name, ()) for alias in child.names)
+            elif isinstance(child, ast.ImportFrom):
+                bucket.append((_from_target(child, package),
+                               tuple(a.name for a in child.names)))
+                continue
+            elif isinstance(child, ast.ClassDef):
+                module.classes += 1
+                if _is_abstract(child):
+                    module.abstract_classes += 1
+            elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                module.functions += 1
+                visit(child, True)  # a body that runs later, if at all
+                continue
+            elif isinstance(child, ast.If) and _is_type_checking(child.test):
+                for item in child.body:
+                    visit(ast.Module(body=[item], type_ignores=[]), True)
+                for item in child.orelse:
+                    visit(ast.Module(body=[item], type_ignores=[]), deferred)
+                continue
+            visit(child, deferred)
+
+    visit(tree, False)
+    module.raw = [(base, names) for base, names in hard if base]
+    module.raw_deferred = [(base, names) for base, names in soft if base]
 
 
 def _from_target(node: ast.ImportFrom, package: str) -> str:
@@ -138,6 +172,15 @@ def _from_target(node: ast.ImportFrom, package: str) -> str:
     if node.module:
         base = [*base, *node.module.split(".")]
     return ".".join(base)
+
+
+def _is_type_checking(test: ast.expr) -> bool:
+    """`if TYPE_CHECKING:` in any of the spellings people use."""
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    if isinstance(test, ast.Attribute):
+        return test.attr == "TYPE_CHECKING"
+    return False
 
 
 def _is_abstract(node: ast.ClassDef) -> bool:
@@ -173,18 +216,23 @@ def _resolve(modules: dict[str, Module]) -> None:
     """
     known = set(modules)
     for module in modules.values():
-        edges: set[str] = set()
-        for base, names in module.raw:
-            specific = {f"{base}.{name}" for name in names} & known
-            if specific:
-                edges |= specific
-                continue
-            if base in known:
-                edges.add(base)
-                continue
-            # `a.b.c` may be an attribute of module `a.b`.
-            parent = base.rsplit(".", 1)[0]
-            if parent in known:
-                edges.add(parent)
-        edges.discard(module.name)
-        module.imports = edges
+        module.imports = _edges(module.raw, known, module.name)
+        module.deferred = _edges(module.raw_deferred, known, module.name) - module.imports
+
+
+def _edges(raw: list[tuple[str, tuple[str, ...]]], known: set[str], self_name: str) -> set[str]:
+    edges: set[str] = set()
+    for base, names in raw:
+        specific = {f"{base}.{name}" for name in names} & known
+        if specific:
+            edges |= specific
+            continue
+        if base in known:
+            edges.add(base)
+            continue
+        # `a.b.c` may be an attribute of module `a.b`.
+        parent = base.rsplit(".", 1)[0]
+        if parent in known:
+            edges.add(parent)
+    edges.discard(self_name)
+    return edges

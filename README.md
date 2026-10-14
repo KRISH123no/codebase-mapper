@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/KRISH123no/codebase-mapper/actions/workflows/ci.yml/badge.svg)](https://github.com/KRISH123no/codebase-mapper/actions/workflows/ci.yml)
 
-![findings from running it on the requests library](assets/demo.svg)
+![findings from running it on Flask](assets/demo.svg)
 
 **What is load-bearing in this codebase, and what is untested.**
 
@@ -94,7 +94,7 @@ judgements about a domain no analyser understands.
 go is turning English into a structure at the input boundary, and cutting that was what made the
 rest deterministic.
 
-## Two bugs the real world found
+## Three bugs the real world found
 
 Pointed at `requests`, it reported an **eleven-module cycle** — half the project. That smelled wrong,
 and it was: `from . import sessions` was recording an edge to the *package* rather than to
@@ -106,10 +106,24 @@ The severity of "load-bearing and untested" was a **share** of the project, so a
 module depended on scored identically in a 3-module project and a 30-module one. Now it weighs the
 count as well as the share.
 
+Then Flask came out as a **twenty-module cycle** out of thirty-five. Also wrong, and the most
+important of the three. `ast.walk` flattens the tree, so
+
+```python
+if TYPE_CHECKING:
+    from .app import Flask
+```
+
+counted exactly like a module-level import. It is not one — nothing is imported at run time, and
+the author wrote it that way *because* there is a cycle. The tool was reporting the workaround as
+the problem. Imports inside functions and under `TYPE_CHECKING` are now tracked separately, and
+Flask, requests and black all show **zero runtime cycles**, which is the right answer for three
+mature libraries that each solved this deliberately.
+
 ## What the tests check
 
 ```bash
-pytest -q      # 94 tests, under a second
+pytest -q      # 103 tests, under a second
 ruff check .
 ```
 
@@ -124,6 +138,10 @@ dataclasses, so it runs anywhere.
   `tree-sitter` and a parser each.
 - **It sees what the source says.** Imports built from strings, plugin registries, dependency
   injection and anything resolved at runtime are invisible. The graph is a floor, not the truth.
+- **Deferred imports are tracked but not reported.** An import inside a function or under
+  `TYPE_CHECKING` is a real relationship and not a runtime dependency, so it is kept out of the
+  cycle check. Surfacing it as "these modules are conceptually coupled, and someone already worked
+  around it" would be useful and is not written yet.
 - **Abstractness is approximated** by counting classes that inherit `ABC` or `Protocol`, or hold an
   `@abstractmethod`. Duck typing is abstract in practice and concrete here.
 - **No coverage report, no headline finding.** It says so and prints the command to produce one.
@@ -134,15 +152,15 @@ dataclasses, so it runs anywhere.
 | File | Lines | Role |
 |---|---:|---|
 | `findings.py` | 206 | what is worth saying, and in what order |
-| `parse.py` | 190 | Python into modules and edges |
+| `parse.py` | 238 | Python into modules and edges |
 | `graph.py` | 180 | coupling, instability, cycles, depth |
 | `history.py` | 124 | what changes together |
 | `cli.py` | 122 | the command |
 | `report.py` | 98 | printing it |
 | `coverage.py` | 108 | matching a report to modules |
-| `model.py` | 58 | the three types |
+| `model.py` | 64 | the three types |
 
-1,095 lines of implementation, 676 of tests.
+1,149 lines of implementation, 756 of tests.
 
 ## Licence
 

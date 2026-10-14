@@ -139,3 +139,83 @@ def test_paths_become_dotted_names(tmp_path, relative, expected, is_package):
 )
 def test_test_modules_are_recognised(name, path, expected):
     assert looks_like_test(name, path) is expected
+
+
+# -------------------------------------------- imports that happen later
+
+
+def deferred(root):
+    return {n: sorted(m.deferred) for n, m in parse(root).source.items()}
+
+
+def test_a_top_level_import_is_a_runtime_dependency(tmp_path):
+    project(tmp_path, {"pkg/__init__.py": "", "pkg/a.py": "from .b import x\n", "pkg/b.py": "x=1\n"})
+    assert edges(tmp_path)["pkg.a"] == ["pkg.b"]
+    assert deferred(tmp_path)["pkg.a"] == []
+
+
+def test_an_import_inside_a_function_is_not(tmp_path):
+    """A late import is how you break a cycle on purpose."""
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/b.py": "x=1\n",
+        "pkg/a.py": "def go():\n    from .b import x\n    return x\n",
+    })
+    assert edges(tmp_path)["pkg.a"] == []
+    assert deferred(tmp_path)["pkg.a"] == ["pkg.b"]
+
+
+def test_an_import_under_type_checking_is_not(tmp_path):
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/b.py": "x=1\n",
+        "pkg/a.py": "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from .b import x\n",
+    })
+    assert edges(tmp_path)["pkg.a"] == []
+    assert deferred(tmp_path)["pkg.a"] == ["pkg.b"]
+
+
+def test_the_else_branch_of_type_checking_does_run(tmp_path):
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/b.py": "x=1\n",
+        "pkg/a.py": (
+            "from typing import TYPE_CHECKING\n"
+            "if TYPE_CHECKING:\n    pass\nelse:\n    from .b import x\n"
+        ),
+    })
+    assert edges(tmp_path)["pkg.a"] == ["pkg.b"]
+
+
+def test_t_dot_type_checking_is_recognised(tmp_path):
+    """`import typing as t` then `if t.TYPE_CHECKING:` is how flask writes it."""
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/b.py": "x=1\n",
+        "pkg/a.py": "import typing as t\nif t.TYPE_CHECKING:\n    from .b import x\n",
+    })
+    assert edges(tmp_path)["pkg.a"] == []
+
+
+def test_a_cycle_made_only_of_deferred_imports_is_not_a_cycle(tmp_path):
+    """Reporting it would flag the workaround rather than the problem."""
+    from codebase_mapper.graph import Graph
+
+    project(tmp_path, {
+        "pkg/__init__.py": "",
+        "pkg/a.py": "from .b import x\n",
+        "pkg/b.py": "def go():\n    from .a import y\n",
+    })
+    assert Graph(parse(tmp_path).source).cycles() == []
+
+
+def test_a_real_cycle_is_still_found(tmp_path):
+    from codebase_mapper.graph import Graph
+
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/a.py": "from .b import x\n", "pkg/b.py": "from .a import y\n",
+    })
+    assert Graph(parse(tmp_path).source).cycles() == [["pkg.a", "pkg.b"]]
+
+
+def test_a_file_whose_docstring_warns_does_not_print_to_the_terminal(tmp_path, capsys):
+    """A stray backslash makes ast warn. That is the project's business."""
+    project(tmp_path, {"pkg/__init__.py": "", "pkg/a.py": '"""a \\ b"""\nx = 1\n'})
+    parse(tmp_path)
+    assert capsys.readouterr().err == ""
