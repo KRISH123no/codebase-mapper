@@ -29,7 +29,7 @@ def test_a_directory_with_no_python_says_so(capsys, tmp_path):
 
 def test_without_coverage_it_says_what_to_run(capsys, tiny):
     code, out = run(capsys, "map", str(tiny), "--no-git")
-    assert "coverage xml" in out
+    assert code == 0 and "coverage xml" in out
 
 
 def test_with_coverage_the_strongest_finding_becomes_available(capsys, tmp_path):
@@ -66,7 +66,7 @@ def test_a_bare_path_works_without_naming_the_subcommand(capsys, tiny):
 def test_unparseable_files_are_counted_in_the_output(capsys, tmp_path):
     project(tmp_path, {"pkg/__init__.py": "", "pkg/ok.py": "x = 1\n", "pkg/bad.py": "def (\n"})
     code, out = run(capsys, "map", str(tmp_path), "--no-git")
-    assert "could not be parsed" in out
+    assert code == 0 and "could not be parsed" in out
 
 
 def test_a_tidy_project_is_told_so(capsys, tmp_path):
