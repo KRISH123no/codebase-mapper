@@ -10,13 +10,12 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
+from conftest import project
 
 from codebase_mapper.cli import main
 from codebase_mapper.findings import collect
 from codebase_mapper.graph import Graph
 from codebase_mapper.parse import parse
-from conftest import project
 
 HERE = Path(__file__).resolve().parent.parent
 
@@ -125,6 +124,7 @@ def test_regression_severity_counts_as_well_as_shares():
     """Found in review: a module everything depends on scored the same in a
     three-module project and a thirty-module one."""
     from conftest import graph_of, mod
+
     from codebase_mapper.findings import critical_untested
 
     small = graph_of(mod("core", coverage=0.1), *[mod(f"m{i}", ["core"]) for i in range(2)])
