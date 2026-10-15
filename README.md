@@ -120,10 +120,17 @@ the problem. Imports inside functions and under `TYPE_CHECKING` are now tracked 
 Flask, requests and black all show **zero runtime cycles**, which is the right answer for three
 mature libraries that each solved this deliberately.
 
+## What "works" means
+
+Acceptance criteria, how each is checked, and what is deliberately out of scope:
+**[docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)**. Written after the fact, which the document says.
+
+Measured: Django, 920 modules across 2,933 files, **9.7 seconds**.
+
 ## What the tests check
 
 ```bash
-pytest -q      # 103 tests, under a second
+pytest -q      # 113 tests, under a second
 ruff check .
 ```
 
@@ -160,7 +167,7 @@ dataclasses, so it runs anywhere.
 | `coverage.py` | 108 | matching a report to modules |
 | `model.py` | 64 | the three types |
 
-1,149 lines of implementation, 756 of tests.
+1,149 lines of implementation, 902 of tests.
 
 ## Licence
 
