@@ -15,8 +15,9 @@ first.
 
 ```bash
 pip install -e ".[dev]"
-codebase-mapper .                   # the findings
-codebase-mapper numbers .           # the metrics, to argue with the ranking
+codebase-mapper .                           # the findings
+codebase-mapper numbers .                   # the metrics, to argue with the ranking
+codebase-mapper . --html report.html        # one file you can send someone
 ```
 
 No dependencies. `ast`, `xml` and `git` are all it needs, and it never executes the code it reads.
@@ -50,6 +51,21 @@ is already free to change.
 import between them, are coupled through something the source does not say: a shared schema, a
 duplicated constant, a protocol both ends implement. **An import graph structurally cannot see this**,
 and it is where the surprises in an unfamiliar codebase live.
+
+## The map is layered, not a hairball
+
+`--html` writes a single self-contained file: the findings with their recommendations, the
+structure, and the metrics. No CDN, no JavaScript, no network — it works offline forever, which is
+the only kind of artifact worth sending anyone.
+
+The structure is drawn as **layers**, not a graph. Four hundred nodes in a spring layout is a
+hairball: it looks like architecture, communicates nothing, and is why this genre of tool gets
+opened once. Instead, modules that depend on nothing sit at the bottom and each layer above depends
+only on the ones below it. **Read it upwards and you are reading the project in the order it was
+built** — which is what someone arriving at an unfamiliar codebase actually wants.
+
+A module caught in a cycle has no correct layer, so it is placed above its deepest external
+dependency and marked amber. Red means load-bearing and thinly tested.
 
 ## The metrics are thirty years old
 
@@ -130,7 +146,7 @@ Measured: Django, 920 modules across 2,933 files, **9.7 seconds**.
 ## What the tests check
 
 ```bash
-pytest -q      # 113 tests, under a second
+pytest -q      # 118 tests, under a second
 ruff check .
 ```
 
@@ -159,15 +175,16 @@ dataclasses, so it runs anywhere.
 | File | Lines | Role |
 |---|---:|---|
 | `findings.py` | 206 | what is worth saying, and in what order |
+| `html.py` | 239 | the report, and the layered map |
 | `parse.py` | 238 | Python into modules and edges |
+| `cli.py` | 134 | the command |
 | `graph.py` | 180 | coupling, instability, cycles, depth |
 | `history.py` | 124 | what changes together |
-| `cli.py` | 122 | the command |
-| `report.py` | 98 | printing it |
+| `report.py` | 98 | printing it to a terminal |
 | `coverage.py` | 108 | matching a report to modules |
 | `model.py` | 64 | the three types |
 
-1,149 lines of implementation, 902 of tests.
+1,400 lines of implementation, 967 of tests.
 
 ## Licence
 

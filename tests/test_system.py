@@ -144,3 +144,68 @@ def test_it_runs_as_an_installed_command():
     assert done.returncode == 0
     assert "modules" in done.stdout
     assert done.stderr == "", "a clean run should print nothing to stderr"
+
+
+# ----------------------------------------------------------- the artifact
+
+
+def test_the_report_is_written_and_self_contained(tmp_path, tiny, capsys):
+    """One file that works offline forever is the only kind worth sending."""
+    out = tmp_path / "report.html"
+    assert main(["map", str(tiny), "--no-git", "--html", str(out)]) == 0
+    page = out.read_text()
+    assert "<h2>Findings</h2>" in page
+    assert "<h2>Structure</h2>" in page
+    assert "<h2>Metrics</h2>" in page
+    assert 'src="http' not in page and 'href="http' not in page
+
+
+def test_the_layers_go_deepest_first(tmp_path):
+    """Read it upwards and you are reading the project in build order."""
+    from codebase_mapper.html import layers
+
+    project(tmp_path, {
+        "pkg/__init__.py": "",
+        "pkg/base.py": "x = 1\n",
+        "pkg/middle.py": "from .base import x\n",
+        "pkg/top.py": "from .middle import x\n",
+    })
+    stack = layers(Graph(parse(tmp_path).source))
+    assert "pkg.base" in stack[0]
+    assert "pkg.middle" in stack[1]
+    assert "pkg.top" in stack[2]
+
+
+def test_a_module_in_a_cycle_still_gets_a_layer(tmp_path):
+    """There is no correct answer for a cycle; looping forever is worse."""
+    from codebase_mapper.html import layers
+
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/a.py": "from .b import x\n", "pkg/b.py": "from .a import y\n",
+    })
+    stack = layers(Graph(parse(tmp_path).source))
+    placed = {n for layer in stack for n in layer}
+    assert {"pkg.a", "pkg.b"} <= placed
+
+
+def test_everything_the_graph_knows_appears_in_the_report(tmp_path, tiny):
+    """A map that quietly omits modules is worse than no map."""
+    from codebase_mapper.html import render
+
+    graph = Graph(parse(tiny).source)
+    page = render(graph, [], root=str(tiny))
+    for name in graph.nodes:
+        assert name in page
+
+
+def test_a_module_name_cannot_inject_markup(tmp_path):
+    """Paths come from the filesystem, and a filesystem will accept anything."""
+    from codebase_mapper.html import render
+
+    project(tmp_path, {"pkg/__init__.py": "", "pkg/a.py": "x = 1\n"})
+    graph = Graph(parse(tmp_path).source)
+    node = next(iter(graph.nodes.values()))
+    graph.nodes["<script>alert(1)</script>"] = node
+    page = render(graph, [], root="<script>bad</script>")
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;" in page

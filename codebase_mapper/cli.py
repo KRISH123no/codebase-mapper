@@ -12,7 +12,7 @@ from .findings import collect
 from .graph import Graph
 from .history import commits, couplings, undeclared
 from .parse import parse
-from .report import BOLD, DIM, findings_lines, legend, paint, summary, table
+from .report import BOLD, DIM, GREEN, findings_lines, legend, paint, summary, table
 
 
 def cmd_map(args) -> int:
@@ -48,6 +48,16 @@ def cmd_map(args) -> int:
         print("\n".join(table(graph)))
         print()
         print("\n".join(legend()))
+
+    if args.html:
+        from .html import render
+
+        out = Path(args.html).expanduser()
+        out.write_text(
+            render(graph, found, root=str(root), covered=covered, commits=len(log)),
+            encoding="utf-8",
+        )
+        print(paint(f"\n  wrote {out}", GREEN))
 
     if not covered:
         print(paint(f"  no coverage report found — run `{ensure_report(root)}` "
@@ -85,11 +95,13 @@ def build_parser() -> argparse.ArgumentParser:
     mapped.add_argument("--limit", type=int, default=8)
     mapped.add_argument("--all", action="store_true")
     mapped.add_argument("--numbers", action="store_true", help="also print the metrics table")
+    mapped.add_argument("--html", metavar="FILE",
+                        help="write a self-contained report you can send someone")
     mapped.set_defaults(func=cmd_map)
 
     numbers = sub.add_parser("numbers", help="the metrics table, to argue with the ranking")
     shared(numbers)
-    numbers.set_defaults(func=cmd_numbers, all=False)
+    numbers.set_defaults(func=cmd_numbers, all=False, html=None)
 
     return parser
 
