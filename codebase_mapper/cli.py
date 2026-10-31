@@ -73,6 +73,12 @@ def cmd_numbers(args) -> int:
     return cmd_map(args)
 
 
+def cmd_serve(args) -> int:
+    from .server import serve
+
+    return serve(args.port, open_browser=not args.no_open)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codebase-mapper",
@@ -99,6 +105,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="write a self-contained report you can send someone")
     mapped.set_defaults(func=cmd_map)
 
+    served = sub.add_parser("serve", help="a local page, for when you would rather not type")
+    served.add_argument("--port", type=int, default=8000)
+    served.add_argument("--no-open", action="store_true", help="do not open a browser")
+    served.set_defaults(func=cmd_serve)
+
     numbers = sub.add_parser("numbers", help="the metrics table, to argue with the ranking")
     shared(numbers)
     numbers.set_defaults(func=cmd_numbers, all=False, html=None)
@@ -106,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-COMMANDS = ("map", "numbers")
+COMMANDS = ("map", "numbers", "serve")
 
 
 def normalise(argv: list[str]) -> list[str]:

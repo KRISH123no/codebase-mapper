@@ -18,6 +18,7 @@ pip install -e ".[dev]"
 codebase-mapper .                           # the findings
 codebase-mapper numbers .                   # the metrics, to argue with the ranking
 codebase-mapper . --html report.html        # one file you can send someone
+codebase-mapper serve                       # a local page, if you'd rather not type
 ```
 
 No dependencies. `ast`, `xml` and `git` are all it needs, and it never executes the code it reads.
@@ -51,6 +52,19 @@ is already free to change.
 import between them, are coupled through something the source does not say: a shared schema, a
 duplicated constant, a protocol both ends implement. **An import graph structurally cannot see this**,
 and it is where the surprises in an unfamiliar codebase live.
+
+## There is a page, if you want one
+
+`codebase-mapper serve` opens a black page on `localhost`: paste a path, press the button, read the
+report. Same analysis, no terminal.
+
+It binds to **127.0.0.1 and nothing else**, and that is not configurable. A tool that reads
+arbitrary directories should not be reachable from the network, and the simplest way to guarantee
+that is to never offer the choice. It also never executes the project it is given — the analysis is
+the same `ast` parse the command line does, so pointing it at a stranger's repository is as safe as
+reading one.
+
+Standard library `http.server`. Still no dependencies.
 
 ## The map is layered, not a hairball
 
@@ -146,7 +160,7 @@ Measured: Django, 920 modules across 2,933 files, **9.7 seconds**.
 ## What the tests check
 
 ```bash
-pytest -q      # 126 tests, under a second
+pytest -q      # 133 tests, under a second
 ruff check .
 ```
 
@@ -174,17 +188,18 @@ dataclasses, so it runs anywhere.
 
 | File | Lines | Role |
 |---|---:|---|
-| `findings.py` | 206 | what is worth saying, and in what order |
+| `findings.py` | 226 | what is worth saying, and in what order |
 | `html.py` | 239 | the report, and the layered map |
+| `server.py` | 170 | the local page |
 | `parse.py` | 238 | Python into modules and edges |
-| `cli.py` | 134 | the command |
+| `cli.py` | 145 | the commands |
 | `graph.py` | 180 | coupling, instability, cycles, depth |
 | `history.py` | 124 | what changes together |
 | `report.py` | 98 | printing it to a terminal |
 | `coverage.py` | 108 | matching a report to modules |
 | `model.py` | 64 | the three types |
 
-1,420 lines of implementation, 1,010 of tests.
+1,601 lines of implementation, 1,097 of tests.
 
 ## Licence
 
