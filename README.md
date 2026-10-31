@@ -110,7 +110,7 @@ judgements about a domain no analyser understands.
 go is turning English into a structure at the input boundary, and cutting that was what made the
 rest deterministic.
 
-## Three bugs the real world found
+## Four bugs the real world found
 
 Pointed at `requests`, it reported an **eleven-module cycle** — half the project. That smelled wrong,
 and it was: `from . import sessions` was recording an edge to the *package* rather than to
@@ -146,7 +146,7 @@ Measured: Django, 920 modules across 2,933 files, **9.7 seconds**.
 ## What the tests check
 
 ```bash
-pytest -q      # 118 tests, under a second
+pytest -q      # 126 tests, under a second
 ruff check .
 ```
 
@@ -184,7 +184,7 @@ dataclasses, so it runs anywhere.
 | `coverage.py` | 108 | matching a report to modules |
 | `model.py` | 64 | the three types |
 
-1,400 lines of implementation, 967 of tests.
+1,420 lines of implementation, 1,010 of tests.
 
 ## Licence
 

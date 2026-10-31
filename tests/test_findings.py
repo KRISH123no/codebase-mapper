@@ -142,11 +142,54 @@ def test_a_tidy_project_produces_nothing():
 
 
 def test_the_limit_is_respected():
+    # Distinct subjects, because each module now contributes at most one line.
     g = graph_of(
         mod("core", classes=1, coverage=0.0),
-        *[mod(f"m{i}", ["core"], coverage=0.0) for i in range(8)],
+        mod("other", classes=1, coverage=0.1),
+        *[mod(f"m{i}", ["core", "other"], coverage=0.9) for i in range(8)],
         mod("x", ["y"]), mod("y", ["x"]),
+        mod("p", ["q"]), mod("q", ["p"]),
         mod("god", [f"m{i}" for i in range(8)]),
     )
     assert len(collect(g)) > 3
     assert len(collect(g, limit=3)) == 3
+
+
+# ------------------------------------------------- one line per module
+
+
+def test_a_module_is_reported_once_with_the_worst_thing_true_about_it():
+    """It was appearing twice, and the weaker entry often sorted higher."""
+    g = graph_of(
+        mod("core", classes=2, coverage=0.1),
+        *[mod(f"m{i}", ["core"], coverage=0.9) for i in range(6)],
+    )
+    found = collect(g)
+    subjects = [f.subject for f in found]
+    assert subjects.count("core") == 1
+    assert next(f for f in found if f.subject == "core").kind == "untested-core"
+
+
+def test_the_measured_fact_outranks_the_proxy():
+    """wide-module says "a proxy, not a verdict" in its own advice. It must
+    never sort above something measured."""
+    g = graph_of(
+        mod("core", classes=1, coverage=0.1),
+        *[mod(f"m{i}", ["core"], coverage=0.95) for i in range(6)],
+        mod("god", [f"m{i}" for i in range(6)] + ["core"]),
+    )
+    found = collect(g)
+    assert found[0].kind == "untested-core"
+
+
+def test_nothing_scoring_zero_takes_up_a_line():
+    g = graph_of(mod("a", classes=1, coverage=1.0), mod("b", ["a"], coverage=1.0))
+    assert all(f.severity > 0 for f in collect(g))
+
+
+def test_the_order_is_stable_when_severities_tie():
+    g = graph_of(
+        mod("core", classes=1, coverage=0.2),
+        *[mod(f"m{i}", ["core"], coverage=0.2) for i in range(4)],
+    )
+    assert [f.subject for f in collect(g)] == [f.subject for f in collect(g)]

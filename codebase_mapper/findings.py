@@ -51,7 +51,7 @@ def critical_untested(graph: Graph) -> list[Finding]:
             Finding(
                 kind="untested-core",
                 subject=node.name,
-                severity=severity * 10,
+                severity=severity * 30,
                 headline=f"{node.fan_in} modules depend on it · {coverage:.0%} covered",
                 detail=(
                     f"A bug here reaches {node.fan_in} of {len(graph) - 1} modules "
@@ -77,7 +77,7 @@ def zone_of_pain(graph: Graph) -> list[Finding]:
             continue
         coverage = node.module.coverage
         comfort = coverage if coverage is not None else 0.5
-        severity = node.fan_in * node.distance * (1.0 - comfort) * 6
+        severity = node.fan_in * node.distance * (1.0 - comfort) * 3
         out.append(
             Finding(
                 kind="zone-of-pain",
@@ -158,7 +158,10 @@ def wide_modules(graph: Graph) -> list[Finding]:
             Finding(
                 kind="wide-module",
                 subject=node.name,
-                severity=node.fan_out * 1.5,
+                # Only the excess counts: a module at the threshold is not
+                # news, and this is the weakest signal here. It must never
+                # outrank a measured fact.
+                severity=(node.fan_out - WIDE_FAN_OUT + 1) * 1.2,
                 headline=f"depends on {node.fan_out} modules",
                 detail="Often a coordinator, sometimes a module doing several jobs.",
                 advice="Worth a look — this is a proxy, not a verdict.",
@@ -178,7 +181,7 @@ def over_tested_leaves(graph: Graph) -> list[Finding]:
             Finding(
                 kind="over-tested-leaf",
                 subject=node.name,
-                severity=1.0,
+                severity=0.5,
                 headline=f"{coverage:.0%} covered · {node.fan_in} depend on it",
                 detail="Thoroughly tested, and nothing downstream to protect.",
                 advice="Not a problem. Noted because the effort could go elsewhere.",
@@ -187,13 +190,28 @@ def over_tested_leaves(graph: Graph) -> list[Finding]:
     return out
 
 
+def strongest_per_subject(found: list[Finding]) -> list[Finding]:
+    """One finding per module: the worst thing true about it.
+
+    A module that is both load-bearing-and-untested and stable-and-concrete
+    produced two entries, and the weaker one often sorted above the stronger.
+    The reader meets the same name twice and learns nothing the second time.
+    """
+    best: dict[str, Finding] = {}
+    for finding in found:
+        current = best.get(finding.subject)
+        if current is None or finding.severity > current.severity:
+            best[finding.subject] = finding
+    return list(best.values())
+
+
 def collect(
     graph: Graph,
     coupling: list[Coupling] | None = None,
     *,
     limit: int | None = None,
 ) -> list[Finding]:
-    """Everything worth saying, worst first."""
+    """Everything worth saying, worst first and once each."""
     found = (
         critical_untested(graph)
         + cycles(graph)
@@ -202,5 +220,7 @@ def collect(
         + wide_modules(graph)
         + over_tested_leaves(graph)
     )
-    found.sort(key=lambda f: -f.severity)
+    # Nothing scoring zero is worth a line.
+    found = [f for f in strongest_per_subject(found) if f.severity > 0]
+    found.sort(key=lambda f: (-f.severity, f.subject))
     return found[:limit] if limit else found
