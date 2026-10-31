@@ -52,7 +52,7 @@ def analyse(path: str, *, use_git: bool = True) -> str:
     coupling = undeclared(couplings(log), modules, root) if log else []
 
     return render(
-        graph, collect(graph), root=str(root.resolve()),
+        graph, collect(graph, coupling), root=str(root.resolve()),
         covered=covered, commits=len(log),
     )
 

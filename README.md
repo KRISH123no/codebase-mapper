@@ -199,7 +199,7 @@ dataclasses, so it runs anywhere.
 | `coverage.py` | 108 | matching a report to modules |
 | `model.py` | 64 | the three types |
 
-1,601 lines of implementation, 1,097 of tests.
+1,601 lines of implementation, 1,116 of tests.
 
 ## Licence
 

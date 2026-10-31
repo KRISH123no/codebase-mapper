@@ -5,6 +5,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 import pytest
+from conftest import project
 
 from codebase_mapper.server import HOST, Handler, analyse
 
@@ -85,3 +86,21 @@ def test_mapping_a_project_over_http(running, tiny):
 def test_an_unknown_route_is_a_404(running):
     status, _ = get(running + "/whatever")
     assert status == 404
+
+
+def test_the_page_reports_hidden_coupling_too(tmp_path, monkeypatch):
+    """The git analysis was being computed and then thrown away, so the page
+    silently dropped one of the three headline findings."""
+    import codebase_mapper.server as server
+    from codebase_mapper.history import Coupling
+
+    project(tmp_path, {
+        "pkg/__init__.py": "", "pkg/a.py": "x = 1\n", "pkg/b.py": "y = 1\n",
+    })
+    monkeypatch.setattr(server, "commits", lambda *a, **k: [["pkg/a.py", "pkg/b.py"]] * 9)
+    monkeypatch.setattr(
+        server, "undeclared",
+        lambda *a, **k: [Coupling("pkg/a.py", "pkg/b.py", together=9, either=10)],
+    )
+    out = server.analyse(str(tmp_path), use_git=True)
+    assert "pkg/a.py + pkg/b.py" in out
